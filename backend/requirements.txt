@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+python-multipart
+pandas
+scikit-learn
+qiskit
+qiskit-machine-learning
+qiskit-aer
+qiskit-algorithms
+sqlalchemy
+psycopg2-binary
