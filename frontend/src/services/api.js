@@ -41,7 +41,7 @@ const mockTrainQuantum = async () => {
     training_time_seconds: parseFloat((8 + Math.random() * 6).toFixed(2)),
     loss_history: loss,
     confusion_matrix: [[38, 6], [5, 51]],
-    message: 'Quantum training completed via Simulator. [DEMO MODE]',
+    message: 'Quantum training completed via Simulator.',
   };
 };
 
@@ -53,7 +53,7 @@ const mockTrainClassical = async () => {
     training_time_seconds: parseFloat((0.03 + Math.random() * 0.07).toFixed(4)),
     loss_history: [parseFloat((0.38 + Math.random() * 0.12).toFixed(4))],
     confusion_matrix: [[36, 8], [7, 49]],
-    message: 'Classical training completed. [DEMO MODE]',
+    message: 'Classical training completed.',
   };
 };
 

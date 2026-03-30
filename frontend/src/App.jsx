@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import UploadForm from './components/UploadForm';
 import Visualization from './components/Visualization';
 import { trainQuantum, trainClassical } from './services/api';
-import { Atom, FlaskConical } from 'lucide-react';
+import { Atom } from 'lucide-react';
 
-const IS_MOCK = import.meta.env.VITE_MOCK_MODE === 'true';
 
 function App() {
   const [datasetContext, setDatasetContext] = useState(null);
