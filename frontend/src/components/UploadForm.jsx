@@ -1,29 +1,56 @@
 import React, { useState } from 'react';
-import { UploadCloud, CheckCircle, Zap } from 'lucide-react';
-import { uploadDataset, trainQuantum, trainClassical } from '../services/api';
+import { UploadCloud, CheckCircle, Zap, AlertCircle, Wifi } from 'lucide-react';
+import { uploadDataset } from '../services/api';
 
 const UploadForm = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [statusMsg, setStatusMsg] = useState(null);
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setError(null);
+    setStatusMsg(null);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const dropped = e.dataTransfer.files[0];
+    if (dropped && dropped.name.endsWith('.csv')) {
+      setFile(dropped);
+      setError(null);
+      setStatusMsg(null);
+    } else {
+      setError('Please drop a valid .csv file.');
+    }
   };
 
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file) {
-      setError("Please select a file first.");
+      setError('Please select a file first.');
       return;
     }
     setLoading(true);
+    setError(null);
+    setStatusMsg('Connecting to backend… (may take up to 60s on first load)');
+
     try {
       const data = await uploadDataset(file);
+      setStatusMsg(null);
       onUploadSuccess(data);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      setStatusMsg(null);
+      const detail = err.response?.data?.detail;
+      if (err.code === 'ERR_NETWORK' || err.code === 'ECONNABORTED') {
+        setError(
+          'Network Error: The backend service is waking up or unreachable. ' +
+          'If this is the first request in a while, please wait 30–60 seconds and try again.'
+        );
+      } else {
+        setError(detail || err.message || 'Unexpected error. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -38,12 +65,16 @@ const UploadForm = ({ onUploadSuccess }) => {
       </div>
       <h2 className="text-2xl font-bold mb-2">Upload Dataset</h2>
       <p className="text-sm text-gray-400 mb-6">Max 1000 rows, preferably 2-8 features for QML.</p>
-      
+
       <form onSubmit={handleUpload} className="space-y-4">
-        <div className="relative border-2 border-dashed border-[#45a29e] rounded-lg p-6 hover:bg-[#66fcf1]/5 transition-colors cursor-pointer">
-          <input 
-            type="file" 
-            accept=".csv" 
+        <div
+          className="relative border-2 border-dashed border-[#45a29e] rounded-lg p-6 hover:bg-[#66fcf1]/5 transition-colors cursor-pointer"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
+          <input
+            type="file"
+            accept=".csv"
             onChange={handleFileChange}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
@@ -59,15 +90,33 @@ const UploadForm = ({ onUploadSuccess }) => {
           </div>
         </div>
 
-        {error && <div className="text-red-400 text-sm mt-2">{error}</div>}
+        {/* Status message (loading hint) */}
+        {statusMsg && (
+          <div className="flex items-start gap-2 text-[#45a29e] text-sm text-left bg-[#45a29e]/10 border border-[#45a29e]/30 rounded-lg p-3">
+            <Wifi className="w-4 h-4 mt-0.5 shrink-0 animate-pulse" />
+            <span>{statusMsg}</span>
+          </div>
+        )}
 
-        <button 
-          type="submit" 
+        {/* Error message */}
+        {error && (
+          <div className="flex items-start gap-2 text-red-400 text-sm text-left bg-red-400/10 border border-red-400/30 rounded-lg p-3">
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <button
+          type="submit"
           disabled={!file || loading}
           className="btn-primary w-full flex items-center justify-center gap-2"
+          id="upload-btn"
         >
           {loading ? (
-            <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0b0c10]"></span>
+            <>
+              <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0b0c10]"></span>
+              <span>Initializing…</span>
+            </>
           ) : (
             <>
               <Zap className="w-5 h-5 text-[#0b0c10]" />
