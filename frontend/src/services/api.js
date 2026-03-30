@@ -1,17 +1,22 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://qml.onrender.com/api';
+const BACKEND_ROOT = API_BASE_URL.replace(/\/api$/, '');
 
-// Axios instance with longer timeout for quantum computations and cold starts
+// Standard client – 3-minute timeout for quantum training runs
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000, // 2 minutes — accounts for Render cold starts + quantum sim time
+  timeout: 180000,
 });
 
-// Wake up the backend (Render free tier cold start helper)
+/**
+ * Ping the backend root to pre-warm it from Render's cold-sleep.
+ * Render free tier can take up to 60 seconds to boot.
+ * Returns true if the backend is alive.
+ */
 export const pingBackend = async () => {
   try {
-    const response = await axios.get(API_BASE_URL.replace('/api', '/'), { timeout: 60000 });
+    const response = await axios.get(BACKEND_ROOT + '/', { timeout: 70000 });
     return response.status === 200;
   } catch {
     return false;

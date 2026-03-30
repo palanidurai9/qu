@@ -1,17 +1,59 @@
-import React, { useState } from 'react';
-import { UploadCloud, CheckCircle, Zap, AlertCircle, Wifi } from 'lucide-react';
-import { uploadDataset } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { UploadCloud, CheckCircle, Zap, AlertCircle, Wifi, WifiOff, RefreshCw } from 'lucide-react';
+import { uploadDataset, pingBackend } from '../services/api';
+
+// Backend health states
+const HEALTH = {
+  UNKNOWN: 'unknown',
+  WAKING: 'waking',
+  ONLINE: 'online',
+  OFFLINE: 'offline',
+};
 
 const UploadForm = ({ onUploadSuccess }) => {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [statusMsg, setStatusMsg] = useState(null);
+  const [health, setHealth] = useState(HEALTH.UNKNOWN);
+  const [wakeSeconds, setWakeSeconds] = useState(0);
+  const timerRef = useRef(null);
+  const isMounted = useRef(true);
+
+  // Auto-ping the backend on mount to pre-warm it
+  useEffect(() => {
+    isMounted.current = true;
+    wakeUpBackend();
+    return () => {
+      isMounted.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const wakeUpBackend = async () => {
+    if (!isMounted.current) return;
+    setHealth(HEALTH.WAKING);
+    setWakeSeconds(0);
+
+    // Count up while waiting
+    timerRef.current = setInterval(() => {
+      if (isMounted.current) setWakeSeconds((s) => s + 1);
+    }, 1000);
+
+    try {
+      const alive = await pingBackend();
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isMounted.current) {
+        setHealth(alive ? HEALTH.ONLINE : HEALTH.OFFLINE);
+      }
+    } catch {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (isMounted.current) setHealth(HEALTH.OFFLINE);
+    }
+  };
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setError(null);
-    setStatusMsg(null);
   };
 
   const handleDrop = (e) => {
@@ -20,7 +62,6 @@ const UploadForm = ({ onUploadSuccess }) => {
     if (dropped && dropped.name.endsWith('.csv')) {
       setFile(dropped);
       setError(null);
-      setStatusMsg(null);
     } else {
       setError('Please drop a valid .csv file.');
     }
@@ -28,32 +69,49 @@ const UploadForm = ({ onUploadSuccess }) => {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file) {
-      setError('Please select a file first.');
-      return;
-    }
+    if (!file) { setError('Please select a file first.'); return; }
+
     setLoading(true);
     setError(null);
-    setStatusMsg('Connecting to backend… (may take up to 60s on first load)');
+
+    // If backend is still waking, wait for ping to complete first
+    if (health === HEALTH.WAKING) {
+      setError('Backend is still starting up — please wait a moment and try again.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const data = await uploadDataset(file);
-      setStatusMsg(null);
       onUploadSuccess(data);
     } catch (err) {
-      setStatusMsg(null);
       const detail = err.response?.data?.detail;
       if (err.code === 'ERR_NETWORK' || err.code === 'ECONNABORTED') {
-        setError(
-          'Network Error: The backend service is waking up or unreachable. ' +
-          'If this is the first request in a while, please wait 30–60 seconds and try again.'
-        );
+        setError('Connection timed out. The backend may have restarted — please try again in a few seconds.');
+        setHealth(HEALTH.OFFLINE);
       } else {
         setError(detail || err.message || 'Unexpected error. Please try again.');
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Status pill UI
+  const StatusBadge = () => {
+    const configs = {
+      [HEALTH.UNKNOWN]:  { icon: <Wifi className="w-3 h-3" />, text: 'Checking backend…',    color: 'text-gray-400 border-gray-600 bg-gray-800/40' },
+      [HEALTH.WAKING]:   { icon: <RefreshCw className="w-3 h-3 animate-spin" />, text: `Waking backend… ${wakeSeconds}s`, color: 'text-yellow-400 border-yellow-600/50 bg-yellow-900/20' },
+      [HEALTH.ONLINE]:   { icon: <Wifi className="w-3 h-3" />, text: 'Backend online ✓',     color: 'text-[#66fcf1] border-[#45a29e]/50 bg-[#66fcf1]/10' },
+      [HEALTH.OFFLINE]:  { icon: <WifiOff className="w-3 h-3" />, text: 'Backend offline',   color: 'text-red-400 border-red-600/50 bg-red-900/20' },
+    };
+    const { icon, text, color } = configs[health];
+    return (
+      <div className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${color} mb-4`}>
+        {icon}
+        <span>{text}</span>
+      </div>
+    );
   };
 
   return (
@@ -63,8 +121,27 @@ const UploadForm = ({ onUploadSuccess }) => {
           <UploadCloud className="w-12 h-12 text-[#66fcf1]" />
         </div>
       </div>
+
       <h2 className="text-2xl font-bold mb-2">Upload Dataset</h2>
-      <p className="text-sm text-gray-400 mb-6">Max 1000 rows, preferably 2-8 features for QML.</p>
+      <p className="text-sm text-gray-400 mb-4">Max 1000 rows, preferably 2-8 features for QML.</p>
+
+      <StatusBadge />
+
+      {health === HEALTH.WAKING && (
+        <p className="text-xs text-yellow-300/70 mb-4 -mt-2">
+          Free tier server is waking up — this takes ~30–60s on first visit. You can upload while it warms up.
+        </p>
+      )}
+
+      {health === HEALTH.OFFLINE && (
+        <button
+          onClick={wakeUpBackend}
+          className="mb-4 text-xs text-[#66fcf1] underline flex items-center gap-1 mx-auto hover:text-white transition-colors"
+          id="retry-wake-btn"
+        >
+          <RefreshCw className="w-3 h-3" /> Retry connection
+        </button>
+      )}
 
       <form onSubmit={handleUpload} className="space-y-4">
         <div
@@ -77,6 +154,7 @@ const UploadForm = ({ onUploadSuccess }) => {
             accept=".csv"
             onChange={handleFileChange}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            id="csv-file-input"
           />
           <div className="text-[#c5c6c7]">
             {file ? (
@@ -90,15 +168,6 @@ const UploadForm = ({ onUploadSuccess }) => {
           </div>
         </div>
 
-        {/* Status message (loading hint) */}
-        {statusMsg && (
-          <div className="flex items-start gap-2 text-[#45a29e] text-sm text-left bg-[#45a29e]/10 border border-[#45a29e]/30 rounded-lg p-3">
-            <Wifi className="w-4 h-4 mt-0.5 shrink-0 animate-pulse" />
-            <span>{statusMsg}</span>
-          </div>
-        )}
-
-        {/* Error message */}
         {error && (
           <div className="flex items-start gap-2 text-red-400 text-sm text-left bg-red-400/10 border border-red-400/30 rounded-lg p-3">
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -108,14 +177,19 @@ const UploadForm = ({ onUploadSuccess }) => {
 
         <button
           type="submit"
-          disabled={!file || loading}
-          className="btn-primary w-full flex items-center justify-center gap-2"
+          disabled={!file || loading || health === HEALTH.WAKING}
+          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           id="upload-btn"
         >
           {loading ? (
             <>
               <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#0b0c10]"></span>
-              <span>Initializing…</span>
+              <span>Uploading…</span>
+            </>
+          ) : health === HEALTH.WAKING ? (
+            <>
+              <RefreshCw className="w-5 h-5 text-[#0b0c10] animate-spin" />
+              Backend Waking Up…
             </>
           ) : (
             <>
