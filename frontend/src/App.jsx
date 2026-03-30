@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import UploadForm from './components/UploadForm';
 import Visualization from './components/Visualization';
 import { trainQuantum, trainClassical } from './services/api';
-import { Atom } from 'lucide-react';
+import { Atom, FlaskConical } from 'lucide-react';
+
+const IS_MOCK = import.meta.env.VITE_MOCK_MODE === 'true';
 
 function App() {
   const [datasetContext, setDatasetContext] = useState(null);
@@ -72,6 +74,12 @@ function App() {
           <p className="text-[#c5c6c7] max-w-2xl mx-auto text-lg pt-4 leading-relaxed">
             Harness the power of Variational Quantum Classifiers (VQC) via Qiskit Aer Simulator. Upload your dataset, select features, and compare quantum vs classical performance.
           </p>
+          {IS_MOCK && (
+            <div className="mt-4 inline-flex items-center gap-2 bg-yellow-400/10 border border-yellow-400/40 text-yellow-300 text-xs px-4 py-1.5 rounded-full">
+              <FlaskConical className="w-3.5 h-3.5" />
+              Demo Mode — results are simulated, no backend required
+            </div>
+          )}
         </header>
 
         {!datasetContext ? (
